@@ -1,3 +1,7 @@
+# 
 # Ignoring directories
 # Both the directory itself and its contents will be ignored.
 data_ignore/
+# ignore all dir name such
+**/data/
+**/data_ignore/
