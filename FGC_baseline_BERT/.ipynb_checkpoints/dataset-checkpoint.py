@@ -5,13 +5,15 @@ import pandas as pd
 
 from torch.utils.data import Dataset
 from transformers import BertTokenizer
+from torch.nn.utils.rnn import pad_sequence
+
 from tqdm import tqdm
 from pathlib import Path
 
 # local settings etc
 PRETRAINED_MODEL_NAME = "bert-base-chinese"
-# data_dir = './FGC_release_1.7.13/'
-# data_file = data_dir + 'FGC_release_all_dev.json'
+data_dir = './FGC_release_1.7.13/'
+data_file = data_dir + 'FGC_release_all_dev.json'
 
 # obtain pretrained bert tokenizer(init?)
 # PRETRAINED_MODEL_NAME = "bert-base-chinese"
@@ -31,7 +33,7 @@ class FGC_Dataset(Dataset):
             ["train", "develop", "test"]
     """
     # read, preprocessing
-    def __init__(self, data_file_ref, mode, tokenizer=BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)):
+    def __init__(self, data_file_ref, mode="train", tokenizer=BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)):
         # load raw json
         assert mode in ["train", "develop", "test"]
         self.mode = mode
@@ -47,7 +49,7 @@ class FGC_Dataset(Dataset):
             sentences = instance["SENTS"]
             for idx, sent in enumerate(sentences):
                 # check if is supporting evidence
-                lab = idx in instance["QUESTIONS"][0]["SHINT_"]
+                lab = int(idx in instance["QUESTIONS"][0]["SHINT_"])
                 self.raw_pair.append((q, sent["text"], lab))
         
         # generate tensors 
@@ -71,7 +73,7 @@ class FGC_Dataset(Dataset):
             sent_tokens = self.tokenizer.tokenize(sent)
             subwords.extend(sent_tokens)
             subwords.append("[SEP]")
-            len_sent = len(subwords)
+            len_sent = len(subwords) -len_q
             
             # subwords to ids, ids to torch tensor
             ids = self.tokenizer.convert_tokens_to_ids(subwords)
@@ -89,3 +91,32 @@ class FGC_Dataset(Dataset):
     
     def __len__(self):
         return len(self.dat)
+    
+    
+"""
+DataLoader for minibatch
+in each batch
+- tokens_tensors  : (batch_size, max_seq_len_in_batch)
+- segments_tensors: (batch_size, max_seq_len_in_batch)
+- masks_tensors   : (batch_size, max_seq_len_in_batch)
+- label_ids       : (batch_size)
+"""
+def create_mini_batch(samples):
+    tokens_tensors = [s[0] for s in samples]
+    segments_tensors = [s[1] for s in samples]
+    
+    # use(have) label or not
+    if samples[0][2] is not None:
+        label_ids = torch.stack([s[2] for s in samples])
+    else:
+        label_ids = None
+    
+    # zero pad to same length
+    tokens_tensors = pad_sequence(tokens_tensors,  batch_first=True)
+    segments_tensors = pad_sequence(segments_tensors,  batch_first=True)
+    
+    # attention masks, set none-padding part to 1 for LM to attend
+    masks_tensors = torch.zeros(tokens_tensors.shape, dtype=torch.long)
+    masks_tensors = masks_tensors.masked_fill( tokens_tensors != 0, 1)
+    
+    return tokens_tensors, segments_tensors, masks_tensors, label_ids
