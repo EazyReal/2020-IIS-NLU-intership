@@ -1,14 +1,15 @@
 # Dependencies
-from dataset import *
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
 from transformers import BertModel
+import torch
+import config
 
 # Hyper Params
 
 n_class = 2
-PRETRAINED_MODEL_NAME = 'bert-base-chinese'
+PRETRAINED_MODEL_NAME = config.BERT_EMBEDDING
 
 # calc pos weight for BCE in train stage!
 
@@ -53,6 +54,7 @@ class BertSERModel(nn.Module):
     # the nn.Module method
     def forward(self, batch):
         logits = self.forward_nn(batch)
+        batch[3] = batch[3].to(dtype=torch.float)
         loss = self.criterion(logits, batch[3])
         return loss
     

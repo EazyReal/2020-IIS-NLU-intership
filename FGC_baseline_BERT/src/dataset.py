@@ -49,7 +49,7 @@ class FGC_Dataset(Dataset):
             sentences = instance["SENTS"]
             for idx, sent in enumerate(sentences):
                 # check if is supporting evidence
-                lab = int(idx in instance["QUESTIONS"][0]["SHINT_"])
+                lab = float(idx in instance["QUESTIONS"][0]["SHINT_"])
                 self.raw_pair.append((q, sent["text"], lab))
         
         # generate tensors 
