@@ -5,3 +5,4 @@ data_ignore/
 # ignore all dir name such
 **/data/
 **/data_ignore/
+**/param
