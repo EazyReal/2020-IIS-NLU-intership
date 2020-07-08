@@ -23,15 +23,20 @@ NUM_WARMUP = 100
 # Load Data using dataset.py
 
 class SER_Trainer:
-    def __init__(self, **args):
-        pass
+    def __init__(self, model):
+        self.model = model
     
-    def train(self, model, train_set=None, batch_size, collate_fn=create_mini_batch, model_file_path):
+    def eval(self, )
+    
+    def train(self, model, train_set=None, dev_set=None, batch_size, collate_fn=create_mini_batch, model_file_path):
         if train_set == None:
             train_set = FGC_Dataset(config.FGC_TRAIN, mode="train")
+        if dev_set == None:
+            dev_set = FGC_Dataset(config.FGC_DEV, mode="develop")
         train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, collate_fn=create_mini_batch)
         
         # calc pos weight for BCE
+        if WEIGHTED_BCE:
         total = 0
         true_cnt = 0
         for instance in train_set:
@@ -92,10 +97,9 @@ class SER_Trainer:
             learning_rate_scalar = scheduler.get_lr()[0]
             print('lr = %f' % learning_rate_scalar)
             print('epoch %d train_loss: %.3f' % (epoch_i, running_loss / len(dataloader_train)))
-
-            if epoch_i % self.eval_frequency == 0:
-                self.eval(dev_batches, epoch_i, trained_model_path, sp_golds, atype_golds)
-        pass
+            if epoch_i % eval_epoch_frequency == 0:
+                self.eval(dev_batches, epoch_i, trained_model_path)
+        return 
     
     
     

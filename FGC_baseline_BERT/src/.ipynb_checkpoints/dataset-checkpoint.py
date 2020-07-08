@@ -7,17 +7,13 @@ from torch.utils.data import Dataset
 from transformers import BertTokenizer
 from torch.nn.utils.rnn import pad_sequence
 
-from tqdm import tqdm
 from pathlib import Path
 
-# local settings etc
-PRETRAINED_MODEL_NAME = "bert-base-chinese"
-data_dir = './FGC_release_1.7.13/'
-data_file = data_dir + 'FGC_release_all_dev.json'
+import config
 
-# obtain pretrained bert tokenizer(init?)
-# PRETRAINED_MODEL_NAME = "bert-base-chinese"
-# tokenizer = BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)
+# params
+PRETRAINED_MODEL_NAME = config.BERT_EMBEDDING
+BERT_MAX_INPUT_LEN = config.BERT_MAX_INPUT_LEN
 
 # custom dataset for FGC data
 class FGC_Dataset(Dataset):
@@ -72,8 +68,14 @@ class FGC_Dataset(Dataset):
             # second sentence
             sent_tokens = self.tokenizer.tokenize(sent)
             subwords.extend(sent_tokens)
+            
+            # truncate if > BERT_MAX_INPUT_LEN 
+            if(len(subwords) > BERT_MAX_INPUT_LEN-1):
+                subwords = subwords[:BERT_MAX_INPUT_LEN-1]
+            
             subwords.append("[SEP]")
             len_sent = len(subwords) -len_q
+            
             
             # subwords to ids, ids to torch tensor
             ids = self.tokenizer.convert_tokens_to_ids(subwords)
@@ -92,11 +94,30 @@ class FGC_Dataset(Dataset):
     def __len__(self):
         return len(self.dat)
     
+    # get id2qid for evalutation
+    def get_id2qid(self, data_file_ref = None):
+        if data_file_ref == None:
+            raw_data = self.raw_data
+            if not raw_data:
+                print("No built raw data or data_file_ref")
+                assert(False)
+        else:
+            with open(data_file_ref) as fo:
+                raw_data = json.load(fo)
+        
+        id_to_qid = []
+        for qidx, instance in enumerate(raw_data):
+            cur_qid = instance["QUESTIONS"][0]["QID"]
+            sentences = instance["SENTS"]
+            for idx, sent in enumerate(sentences):
+                id_to_qid.append(cur_qid)
+        return id_to_qid
+        
     
 """
 DataLoader for minibatch
 in each batch
-- tokens_tensors  : (batch_size, max_seq_len_in_batch)
+- tokens_tensors  : (batch_size, max_seq_len_in_batch) 
 - segments_tensors: (batch_size, max_seq_len_in_batch)
 - masks_tensors   : (batch_size, max_seq_len_in_batch)
 - label_ids       : (batch_size)

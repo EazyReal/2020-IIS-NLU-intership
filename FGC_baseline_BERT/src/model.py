@@ -59,11 +59,16 @@ class BertSERModel(nn.Module):
         return loss
     
     # return sigmoded score
-    def _predict(self, batch):
+    def _predict_score(self, batch):
         logits = self.forward_nn(batch)
         scores = torch.sigmoid(logits)
-        scores = scores.cpu().numpy().tolist()
+        scores = scores.detach().cpu().numpy().tolist()
         return scores
+    
+    # return True False based on score + threshold
+    def _predict(self, batch, threshold=0.5):
+        scores = self._predict_score(batch)
+        return [ 1 if score >= threshold else 0 for score in scores]
     
     # return result with assigned threshold, default = 0.5
     def predict_fgc(self, q_batch, threshold=0.5):
