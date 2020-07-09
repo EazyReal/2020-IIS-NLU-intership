@@ -129,9 +129,9 @@ class SSQA_Dataset(Dataset):
             ["train", "develop", "test"]
     """
     # read, preprocessing
-    def __init__(self, data_file_path, mode, tokenizer=None):
+    def __init__(self, data_file_path, mode="develop", tokenizer=None):
         # load raw json
-        assert mode in ["train", "develop", "test"]
+        assert mode in ["train", "develop", "test", "dev"]
         self.mode = mode
         with open(data_file_path) as fo:
             self.raw_data = json.load(fo)

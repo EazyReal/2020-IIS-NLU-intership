@@ -111,7 +111,7 @@ class SER_Trainer:
         self.model.to(self.device)
         
         if TEST or LOG:
-            print("model in cuda?", next(model.parameters()).is_cuda)
+            print("model in cuda?", next(self.model.parameters()).is_cuda)
             
         # set saving directory
         model_file_path = "baseline_SSQA"
@@ -123,17 +123,20 @@ class SER_Trainer:
             os.mkdir(save_model_path)
             
         # optimizer
-        optimizer = AdamW(optimizer_grouped_parameters, lr=LR)
         
-        # weight decay scheduler
+        # weight decay scheduler setting
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
-            {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': config.WEIGHT_DECAY},
-            {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+            {'params': [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': config.WEIGHT_DECAY},
+            {'params': [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
-        num_train_optimization_steps = len(train_loader) * NUM_EPOCHS
+        num_train_optimization_steps = len(train_loader) * config.NUM_EPOCHS
+        
+        # AdamW
+        optimizer = AdamW(optimizer_grouped_parameters, lr=config.LR)
+        # scheduler
         scheduler = get_linear_schedule_with_warmup(optimizer,
-                                                    num_warmup_steps=NUM_WARMUP,
+                                                    num_warmup_steps=config.NUM_WARMUP,
                                                     num_training_steps=num_train_optimization_steps)
         
         # Check that input does not exist MAX_BERT_LEN
@@ -170,6 +173,7 @@ class SER_Trainer:
                 optimizer.step()
                 scheduler.step()
                 running_loss += loss.item()
+                
             learning_rate_scalar = scheduler.get_lr()[0]
             print('lr = %f' % learning_rate_scalar)
             print('epoch %d train_loss: %.3f' % (epoch_i, running_loss / len(train_loader)))
