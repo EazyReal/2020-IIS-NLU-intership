@@ -180,7 +180,7 @@ class SER_Trainer:
 
             eval_epoch_frequency = 1
             if epoch_i % eval_epoch_frequency == 0:
-                ecopch_stat_by_questions, epoch_stat = eval_model(model, dev_set, id2qid)
+                ecopch_stat_by_questions, epoch_stat = self.eval_model(model, dev_set, id2qid)
                 for k in stat:
                     stat[k].append(epoch_stat[k])
                 print('epoch %d eval_recall: %.3f eval_f1: %.3f' % 
