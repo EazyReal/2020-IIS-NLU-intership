@@ -25,7 +25,7 @@ class BertSERModel(nn.Module):
         super().__init__()
         if bert_encoder == None or not isinstance(bert_encoder, BertModel):
             print("unkown bert model choice, init with PRETRAINED_MODEL_NAME")
-            self.bert_encoder = BertModel.from_pretrained(PRETRAINED_MODEL_NAME)
+            bert_encoder = BertModel.from_pretrained(PRETRAINED_MODEL_NAME)
         self.bert_encoder = bert_encoder
         self.dropout = nn.Dropout(p=bert_encoder.config.hidden_dropout_prob)
         self.classifier = nn.Linear(bert_encoder.config.hidden_size, 1)

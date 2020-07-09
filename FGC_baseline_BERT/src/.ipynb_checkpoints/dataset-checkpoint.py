@@ -29,12 +29,14 @@ class FGC_Dataset(Dataset):
             ["train", "develop", "test"]
     """
     # read, preprocessing
-    def __init__(self, data_file_ref, mode="train", tokenizer=BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)):
+    def __init__(self, data_file_ref, mode="train", tokenizer=None):
         # load raw json
         assert mode in ["train", "develop", "test"]
         self.mode = mode
         with open(data_file_ref) as fo:
             self.raw_data = json.load(fo)
+        if tokenizer == None:
+                tokenizer = BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)
         self.tokenizer = tokenizer 
         self.tokenlized_pair = None
         
