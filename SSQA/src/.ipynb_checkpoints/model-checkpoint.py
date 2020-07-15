@@ -29,6 +29,7 @@ class BertSERModel(nn.Module):
         self.bert_encoder = bert_encoder
         self.dropout = nn.Dropout(p=bert_encoder.config.hidden_dropout_prob)
         self.classifier = nn.Linear(bert_encoder.config.hidden_size, 1)
+        self.pos_weight = pos_weight
         # critrion add positive weight
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     
