@@ -16,6 +16,8 @@ from tqdm import tqdm, trange
 import transformers
 from transformers import AdamW, BertConfig, BertModel, BertTokenizer
 
+#from sklearn.mertrics import precision_recall_fscore_support
+
 
 ARGS_FILE_NAME = 'yesno_config.json'
 MODEL_FILE_NAME = 'yesno_model.pt'
@@ -375,21 +377,45 @@ def eval(args, model, tokenizer, input_data):
     all_qid = []
     correct_qid = []
     
+    TP = 0
+    TN = 0
+    FP = 0
+    FN = 0
+    
     for row in input_data.iterrows():
         question_count += 1
         qid = row[1][0]+'-'+row[1][1]+'-'+row[1][2]
         all_qid.append(qid)
         top_prediction = max(final_predictions[qid], key=lambda x: x['score'])
-        for answer_text_set in [YES_ANSWERS, NO_ANSWERS]:
-            label = row[1][5]
-            if (top_prediction['ATEXT'] in answer_text_set
-                    and label in answer_text_set):
-                correct_count += 1
-                correct_qid.append(qid)
-                break
+        label = row[1][5]
+        #for answer_text_set in [YES_ANSWERS, NO_ANSWERS]:
+        if (top_prediction['ATEXT'] in YES_ANSWERS and label in YES_ANSWERS):
+            correct_count += 1
+            correct_qid.append(qid)
+            TP += 1
+        elif (top_prediction['ATEXT'] in YES_ANSWERS and label in NO_ANSWERS):
+            FP += 1
+        elif (top_prediction['ATEXT'] in NO_ANSWERS and label in YES_ANSWERS):
+            FN += 1
+        elif (top_prediction['ATEXT'] in NO_ANSWERS and label in NO_ANSWERS):
+            correct_count += 1
+            correct_qid.append(qid)
+            TN += 1
     
-    eval_result = {'question_count': question_count, 'correct_count': correct_count,
-                   'accuracy': correct_count / question_count}
+    
+    precision =  0.0 if TP == 0 else TP/(TP+FP) 
+    recall =  0.0 if TP == 0 else TP/(TP+FN) 
+    #beta = 1
+    f1 = 0.0 if TP == 0 else 2*precision*recall / (precision + recall)
+    
+    #modified by ytlin + precision, recall, F1, EM is accuracy
+    eval_result = {'question_count': question_count,
+                   'correct_count': correct_count,
+                   'accuracy': correct_count / question_count,
+                   'precision': precision,
+                   'recall': recall,
+                   'f1': f1,
+                  }
     #return eval_result, list(set(all_qid) - set(correct_qid))
     #return eval_result, correct_qid, list(set(all_qid) - set(correct_qid))
     return eval_result

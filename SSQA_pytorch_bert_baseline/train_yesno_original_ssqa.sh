@@ -14,10 +14,12 @@ export CUDA_VISIBLE_DEVICES=0
 PROJ_ROOT=/work/2020-IIS-NLU-internship/SSQA_pytorch_bert_baseline
 PARAM_ROOT=$PROJ_ROOT/param
 DATA_ROOT=$PROJ_ROOT/dataset/dataset_processed_by_DrLin
-PRED_ROOT=$PROJ_ROOT/prediction
+#PRED_ROOT=$PROJ_ROOT/prediction
 
+############################################
 # where to save model
 OUTPUT_DIR=$PARAM_ROOT/bert-baseline
+############################################
 
 #USE "hfl/chinese-roberta-wwm-ext-large" FOR THE LARGE PRE-TRAINED MODEL
 #INIT_MODEL=hfl/chinese-roberta-wwm-ext
@@ -31,8 +33,8 @@ TRAIN_FILE=$DATA_ROOT/train.tsv
 DEV_FILE=$DATA_ROOT/dev.tsv
 TEST_FILE=$DATA_ROOT/test.tsv
 
-#RESULT_FILE=result.txt
-RESULT_FILE=$PRED_ROOT/bert_output_original_ssqa.txt
+#RESULT_FILE=result.txt, the stats
+RESULT_FILE=$OUTPUT_DIR/bert_output_original_ssqa.txt
 
 # TRAINING
     python run_yesno_ssqa.py \

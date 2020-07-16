@@ -5,6 +5,10 @@ data_ignore/
 # ignore all dir name such
 **/data/
 **/data_ignore/
-**/para/
+**/params/
+**/para
 **/param/
 **/dataset/
+**/predictions
+**/pred
+**/prediction
