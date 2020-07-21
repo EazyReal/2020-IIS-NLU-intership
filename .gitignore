@@ -12,3 +12,5 @@ data_ignore/
 **/predictions
 **/pred
 **/prediction
+**/split_dataset
+**.zip
