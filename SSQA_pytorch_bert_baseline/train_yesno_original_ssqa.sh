@@ -18,7 +18,7 @@ DATA_ROOT=$PROJ_ROOT/dataset/dataset_processed_by_DrLin
 
 ############################################
 # where to save model
-OUTPUT_DIR=$PARAM_ROOT/bert-baseline
+OUTPUT_DIR=$PARAM_ROOT/bert-baseline-goldSE-0722
 ############################################
 
 #USE "hfl/chinese-roberta-wwm-ext-large" FOR THE LARGE PRE-TRAINED MODEL
