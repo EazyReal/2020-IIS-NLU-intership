@@ -1,91 +1,120 @@
 # Dependencies
-from torch.utils.data import DataLoader
-from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
 from transformers import BertModel
 import torch
+import math
+
 import config
 
-# Hyper Params
-
-n_class = 2
-PRETRAINED_MODEL_NAME = config.BERT_EMBEDDING
-
-# calc pos weight for BCE in train stage!
-
-# no need to applied pos_weight = torch.tensor([total/true_cnt, total/(1-true_cnt)])?
-
-class BertSERModel(nn.Module):
+class CrossBERTModel(nn.Module):
     """
-    baseline
-    naive bert by NSP stype + linear classifier applied on [CLS] last hidden
+    bert cross attention model
+    h, p go through bert and get their contexulized embedding saparately
+    and do soft alignment and prediction as in decomp-att paper
+    this is a embedding enhanced version of decomp-att
     """
-    
-    def __init__(self, bert_encoder=None, pos_weight=None):
+    def __init__(self, bert_encoder=None, cross_attention_hidden=config.CROSS_ATTENTION_HIDDEN_SIZE):
         super().__init__()
+        #bert encoder
         if bert_encoder == None or not isinstance(bert_encoder, BertModel):
-            print("unkown bert model choice, init with PRETRAINED_MODEL_NAME")
-            bert_encoder = BertModel.from_pretrained(PRETRAINED_MODEL_NAME)
+            print("unkown bert model choice, init with config.BERT_EMBEDDING")
+            bert_encoder = BertModel.from_pretrained(config.BERT_EMBEDDING)
         self.bert_encoder = bert_encoder
+        # dropouts
         self.dropout = nn.Dropout(p=bert_encoder.config.hidden_dropout_prob)
-        self.classifier = nn.Linear(bert_encoder.config.hidden_size, 1)
-        self.pos_weight = pos_weight
-        # critrion add positive weight
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        self.activation = nn.ReLU(inplace=True)
+        # linear layers for cross attention, with biased?
+        self.cross_attention_hidden = cross_attention_hidden
+        self.Wq = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
+        self.Wk = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
+        self.Wv = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, bert_encoder.config.hidden_size))
+        self.Wo = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, bert_encoder.config.hidden_size))
+        nn.init.xavier_uniform_(self.Wk, gain=nn.init.calculate_gain('linear'))
+        nn.init.xavier_uniform_(self.Wq, gain=nn.init.calculate_gain('linear'))
+        nn.init.xavier_uniform_(self.Wv, gain=nn.init.calculate_gain('linear'))
+        nn.init.xavier_uniform_(self.Wo, gain=nn.init.calculate_gain('relu'))
+        
+        ## cls
+        self.classifier = nn.Linear(2*bert_encoder.config.hidden_size, config.NUM_CLASSES)
+        
+        forward_expansion = 1 # can change
+        #compare stage fnn 2*d=>d
+        self.fnn = nn.Sequential(
+            nn.Linear(2*bert_encoder.config.hidden_size, forward_expansion*bert_encoder.config.hidden_size),
+            nn.ReLU(),
+            nn.Linear(forward_expansion*bert_encoder.config.hidden_size, bert_encoder.config.hidden_size),
+        )
+        # critrion
+        self.criterion = nn.BCEWithLogitsLoss()
+    
+    """
+    cross attention, similar to Decomp-Att
+    but no fowrad nn, use Wk Wq Wv
+    input: query vector(b*n*d), content vector(b*m*d)
+    ouput: sof aligned content vector to query vector(b*n*d)
+    """
+    def cross_attention(self, h1, h2, mask=None):
+        Q = torch.matmul(h1, self.Wq)
+        #K = torch.matmul(h2, self.Wk)
+        K = torch.einsum("bnx,xy->bny", [h2, self.Wk])
+        V = torch.matmul(h2, self.Wv)
+        #Kt = torch.matmul(h2, self.Wk).permute(0,2,1)
+        #E = torch.matmul(Q, Kt)
+        E = torch.einsum("bnd,bmd->bnm", [Q, K]) # batch, n/m, dimension
+        if mask is not None:
+            E = E.masked_fill(mask==0, float(-1e7))
+        A = torch.softmax(E / (math.sqrt(self.cross_attention_hidden)), dim=2) #soft max dim = 2
+        # attention shape: (N, heads, query_len, key_len)
+        aligned_2_for_1 = torch.einsum("bnm,bmd->bnd", [A, V])
+            
+        return aligned_2_for_1
     
     def forward_nn(self, batch):
         """
-        batch[0] = input, shape = (batch_size ,max_len_in_batch)
-        batch[1] = token_type_ids (which sent)
-        batch[2] = mask for padding
-        batch[3] = labels
+        'sentence1' : {'input_ids', 'token_type_ids', 'attention_mask'} batch*len*d
+        'sentence2' :  {'input_ids', 'token_type_ids', 'attention_mask'}
+        'gold_label' : batch*1
         """
-        # the _ here is the last hidden states
-        # q_poolout is a 768-d vector of [CLS]
-        _, q_poolout = self.bert_encoder(batch[0],
-                                         token_type_ids=batch[1],
-                                         attention_mask=batch[2])
-        # q_poolout = self.dropout(q_poolout), MT Wu : no dropout better, without 
-        logits = self.classifier(q_poolout)
-        # can apply nn.module.Sigmoid here to convert to p-distribution
-        # score is indeed better (and more stable)
+        # get bert contextualized embedding
+        hh, poolh = self.bert_encoder(input_ids=batch[config.h_field]['input_ids'],
+                                         token_type_ids=batch[config.h_field]['token_type_ids'],
+                                         attention_mask=batch[config.h_field]['attention_mask'])
+        hp, poolp = self.bert_encoder(input_ids=batch[config.p_field]['input_ids'],
+                                         token_type_ids=batch[config.p_field]['token_type_ids'],
+                                         attention_mask=batch[config.p_field]['attention_mask'])
+        # soft alignment, not considering mask...
+        mh = attention_mask=batch[config.h_field]['attention_mask']
+        mp = attention_mask=batch[config.p_field]['attention_mask']
+        maskph = torch.einsum("bn,bm->bnm", [mh, mp])
+        maskhp = torch.einsum("bn,bm->bnm", [mp, mh])
+        aligned_p_for_h = self.cross_attention(hh, hp, maskph) # b * l_h * d
+        aligned_h_for_p = self.cross_attention(hp, hh, maskhp) # b * l_p *d
+        # comparison stage
+        cmp_hp = self.fnn(torch.cat((aligned_p_for_h, hh), dim=2))
+        cmp_ph = self.fnn(torch.cat((aligned_h_for_p, hp), dim=2))
+        # aggregatoin stage (mean + max for h part IMO)
+        sent_hp = torch.sum(cmp_hp, dim=1, keepdim=False)
+        sent_ph = torch.sum(cmp_ph, dim=1, keepdim=False)
+        # prediction get
+        logits = self.classifier(torch.cat((sent_hp, sent_ph), dim=1))
         logits = logits.squeeze(-1)
         return logits
     
     # the nn.Module method
     def forward(self, batch):
         logits = self.forward_nn(batch)
-        batch[3] = batch[3].to(dtype=torch.float)
-        loss = self.criterion(logits, batch[3])
-        return loss
+        batch[config.label_field] = batch[config.label_field].to(dtype=torch.float)
+        loss = self.criterion(logits, batch[config.label_field])
+        return loss, logits
     
     # return sigmoded score
     def _predict_score(self, batch):
         logits = self.forward_nn(batch)
         scores = torch.sigmoid(logits)
-        scores = scores.detach().cpu().numpy().tolist()
+        scores = scores.detach().cpu()
         return scores
     
     # return True False based on score + threshold
     def _predict(self, batch, threshold=0.5):
         scores = self._predict_score(batch)
-        return [ 1 if score >= threshold else 0 for score in scores]
-    
-    # return result with assigned threshold, default = 0.5
-    def predict_fgc(self, q_batch, threshold=0.5):
-        scores = self._predict(q_batch)
-
-        max_i = 0
-        max_score = 0
-        sp = []
-        for i, score in enumerate(scores):
-            if score > max_score:
-                max_i = i
-                max_score = score
-            if score >= threshold:
-                sp.append(i)
-
-        if not sp:
-            sp.append(max_i)
-
-        return {'sp': sp, 'sp_scores': scores}
+        return torch.argmax(scores, dim=1) # return highest

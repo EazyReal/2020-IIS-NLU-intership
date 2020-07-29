@@ -33,23 +33,22 @@ label_to_id = {
 }
 h_field = "sentence2"
 p_field = "sentence1"
+l_field = "gold_label"
 label_field = "gold_label"
 
 # MODEL
-DEFAULT_USE_WEIGHTED_BCE = True
+CROSS_ATTENTION_HIDDEN_SIZE = 392
+NUM_CLASSES = 3
 
 
 # Bert Enbedding
 BERT_EMBEDDING = "bert-base-uncased" #cased?
 BERT_MAX_INPUT_LEN = 512
 
-tokenizer = BertTokenizer.from_pretrained(config.BERT_EMBEDDING)
-
-
 # Trainning
 BATCH_SIZE = 8
 NUM_EPOCHS = 6
-LR = 0.00001 # 1e-5
+LR = 3*0.00001 # 1e-5
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
 NUM_WARMUP = 100

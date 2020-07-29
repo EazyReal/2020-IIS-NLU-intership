@@ -19,6 +19,17 @@ for f in [config.h_field, config.p_field]:
     }
 """
 
+"""
+debug tensor
+if config.DEBUG:
+    print("WK.size is ", self.Wk.size())
+    print("WK is ", self.Wk)
+    print("h2.size is ", h2.size())
+    print("h2 is ", h2)
+    print("K.size is ", K.size())
+    print("K is ", K)
+"""
+
 ##############################################################
 # for bert embedding, self tokenized                                         #
 ##############################################################

@@ -25,10 +25,12 @@ in each batch
 - label_ids       : (batch_size)
 """
 def create_mini_batch(samples, tokenizer=BertTokenizer.from_pretrained(config.BERT_EMBEDDING)):
+    label_ids = torch.tensor([[config.label_to_id[s[config.label_field]]] for s in samples])
+    label_onehot = torch.zeros(len(samples), config.NUM_CLASSES).scatter_(1,label_ids,1)
     batch = {
         config.p_field : tokenizer([ s[config.p_field] for s in samples], padding=True, truncation=True, return_tensors="pt"),
         config.h_field : tokenizer([ s[config.h_field] for s in samples], padding=True, truncation=True, return_tensors="pt"),
-        config.label_field: torch.tensor([config.label_to_id[s[config.label_field]] for s in samples])
+        config.label_field: label_onehot
     }
     return batch
 
