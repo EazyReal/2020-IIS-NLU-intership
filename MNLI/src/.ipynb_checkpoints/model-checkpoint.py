@@ -6,6 +6,11 @@ import math
 
 import config
 
+# v1 sum pool
+
+# v2 local use p, h, p-h, p+h
+# aggregation use avg pool + max pool 
+
 class CrossBERTModel(nn.Module):
     """
     bert cross attention model
@@ -40,7 +45,7 @@ class CrossBERTModel(nn.Module):
         forward_expansion = 1 # can change
         #compare stage fnn 2*d=>d
         self.fnn = nn.Sequential(
-            nn.Linear(2*bert_encoder.config.hidden_size, forward_expansion*bert_encoder.config.hidden_size),
+            nn.Linear(4*bert_encoder.config.hidden_size, forward_expansion*bert_encoder.config.hidden_size),
             nn.ReLU(),
             nn.Linear(forward_expansion*bert_encoder.config.hidden_size, bert_encoder.config.hidden_size),
         )
@@ -87,16 +92,24 @@ class CrossBERTModel(nn.Module):
         mp = attention_mask=batch[config.p_field]['attention_mask']
         maskph = torch.einsum("bn,bm->bnm", [mh, mp])
         maskhp = torch.einsum("bn,bm->bnm", [mp, mh])
-        aligned_p_for_h = self.cross_attention(hh, hp, maskph) # b * l_h * d
-        aligned_h_for_p = self.cross_attention(hp, hh, maskhp) # b * l_p *d
+        # (b, l_h, d)
+        p_hat = self.cross_attention(hh, hp, maskph) # b * l_h * d
+        # aligned_h_for_p = self.cross_attention(hp, hh, maskhp) # b * l_p *d
+        
         # comparison stage
-        cmp_hp = self.fnn(torch.cat((aligned_p_for_h, hh), dim=2))
-        cmp_ph = self.fnn(torch.cat((aligned_h_for_p, hp), dim=2))
+        # (b, l_h, d)
+        cmp_hp = self.fnn(torch.cat((p_hat, hh, p_hat-hh, p_hat*hh), dim=2))
+        #cmp_ph = self.fnn(torch.cat((aligned_h_for_p, hp), dim=2))
+        
         # aggregatoin stage (mean + max for h part IMO)
-        sent_hp = torch.sum(cmp_hp, dim=1, keepdim=False)
-        sent_ph = torch.sum(cmp_ph, dim=1, keepdim=False)
+        # (b, d)
+        sent_hp_max = torch.max(cmp_hp, dim=1, keepdim=False)[0] # maxpool
+        sent_hp_mean = torch.mean(cmp_hp, dim=1, keepdim=False) # meanpool
+        
+        #sent_ph = torch.sum(cmp_ph, dim=1, keepdim=False)
         # prediction get
-        logits = self.classifier(torch.cat((sent_hp, sent_ph), dim=1))
+        #logits = self.classifier(torch.cat((sent_hp, sent_ph), dim=1))
+        logits = self.classifier(torch.cat((sent_hp_max, sent_hp_mean), dim=1))
         logits = logits.squeeze(-1)
         return logits
     

@@ -1,13 +1,19 @@
 import os
 from pathlib import Path
 
+###################
+# must change
+# save_model_folder
+##################
+
 # whether log when executing
 DEBUG = True
 LOG = True
+#log file path is below
 
 # Paths 
 SRC_ROOT = Path(os.path.dirname(os.path.realpath(__file__)))
-PROJ_ROOT = SRC_ROOT.parent
+PROJ_ROOT = SRC_ROOT.parent #care if multi source
 
 DATA_ROOT = PROJ_ROOT / "data" / "multinli_1.0"
 PARAM_PATH = PROJ_ROOT / "param"
@@ -21,6 +27,10 @@ TRAIN_FILE = DATA_ROOT / "multinli_1.0_train.jsonl"
 PDEV_MMA_FILE = DATA_ROOT / "pre_multinli_1.0_dev_mismatched.jsonl"
 PDEV_MA_FILE = DATA_ROOT / "pre_multinli_1.0_dev_matched.jsonl"
 PTRAIN_FILE = DATA_ROOT / "pre_multinli_1.0_train.jsonl"
+
+SAVE_MODEL_FOLDER = "cross-bert-comp-maxpool"
+LOG_FILE_PATH =  PARAM_PATH / SAVE_MODEL_FOLDER / "train_log.txt"
+PURE_TRAIN_STAT_PATH = PARAM_PATH / SAVE_MODEL_FOLDER / "stat.jsonl"
 
 # Preprocssing / Data Config
 data_config = {
