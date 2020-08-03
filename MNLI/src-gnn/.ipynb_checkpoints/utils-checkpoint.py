@@ -50,7 +50,7 @@ def draw(data, node_size=1000, font_size=12, save_img_file=None):
     plt.show()
 
     
-def text2dep(s, nlp):
+def text2dep(s, nlp, word2idx=None):
     """
     2020/8/3 18:30
     input (str:s, StanzaPipieline: nlp), s is of len l
@@ -64,8 +64,6 @@ def text2dep(s, nlp):
     """
     doc = nlp(s)
     # add root token for each sentences
-    x = torch.tensor(list(range(doc.num_tokens+len(doc.sentences))))
-    #y = torch.tensor(list(range(doc.num_tokens+len(doc.sentences))))
     e = [[],[]]
     edge_info = []
     node_info = []
@@ -77,7 +75,7 @@ def text2dep(s, nlp):
         sent.print_dependencies
         # node info by index(add root at the beginning of every sentence)
         cur_root_id = len(node_info)
-        node_info.append("<ROOT>")
+        node_info.append("[ROOT]")
         for token in sent.tokens:
             node_info.append(token.to_dict()[0]['text'])
         # edge info by index of u in edge (u,v)
@@ -96,7 +94,13 @@ def text2dep(s, nlp):
             e[1].append(id2)
             edge_info.append((id1, id2, "bridge"))
         prev_root_id = cur_root_id
+    # id to embeddings
+    # x = torch.tensor([ for token in node_attr])
     # done building edges and nodes
+    if word2idx == None:
+        x = torch.tensor(list(range(doc.num_tokens+len(doc.sentences))))
+    else:
+        x = torch.tensor([ word2idx[token] if token in word2idx.keys() else word2idx["[UNK]"] for token in node_info])
     e = torch.tensor(e)
     G = Data(x=x, edge_index=e, edge_attr=edge_info, node_attr=node_info)
     return G
@@ -125,6 +129,11 @@ def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOV
         # add [UNK] handler
         words.append("[UNK]")
         word2idx["[UNK]"] = idx
+        glove.append(np.zeros(300)) # 300 is vector dimension
+        idx += 1
+        # add [ROOT] handler
+        words.append("[ROOT]")
+        word2idx["[ROOT]"] = idx
         glove.append(np.zeros(300)) # 300 is vector dimension
         idx += 1
         # load vectors
