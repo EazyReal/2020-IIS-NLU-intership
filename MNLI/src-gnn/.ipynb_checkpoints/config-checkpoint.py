@@ -23,7 +23,12 @@ PARAM_PATH = PROJ_ROOT / "param"
 PDATA_ROOT = PROJ_ROOT / "data" / "preprocessed_MNLI"
 
 # GLOVE path
-GLOVE = PROJ_ROOT / "data" / "glove.42B.300d.txt"
+GLOVE_ROOT = PROJ_ROOT / "data" / "glove_embedding"
+GLOVE_NAME = "glove.42B.300d.txt"
+GLOVE = GLOVE_ROOT / GLOVE_NAME
+GLOVE_VOCAB = GLOVE_ROOT / "glove.42B.300d.vocab.pkl"
+GLOVE_WORD2ID =GLOVE_ROOT / "glove.42B.300d.word2id.pkl"
+GLOVE_DIMENSION = 300
 
 # data path
 DEV_MMA_FILE = DATA_ROOT / "multinli_1.0_dev_mismatched.jsonl"
