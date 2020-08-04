@@ -1,35 +1,30 @@
 # Dependencies
-import torch.nn as nn
-from transformers import BertModel
 import torch
+import torch.nn as nn
 import math
+#from transformers import BertModel
 
 import config
+import utils
 
-# v1 sum pool
-
-# v2 local use p, h, p-h, p+h
-# aggregation use avg pool + max pool 
-
-class CrossBERTModel(nn.Module):
+# work
+class SynNLI_Model(nn.Module):
     """
-    bert cross attention model
-    h, p go through bert and get their contexulized embedding saparately
-    and do soft alignment and prediction as in decomp-att paper
-    this is a embedding enhanced version of decomp-att
+    word embedding (glove/bilstm/elmo/bert)
+    graph encoder (GAT/HGAT/HetGT...)
+    cross attention allignment (DecompAtt)
+    aggregation (LSTM?)
+    prediction (FeedForward)
     """
-    def __init__(self, bert_encoder=None, cross_attention_hidden=config.CROSS_ATTENTION_HIDDEN_SIZE):
+    def __init__(self, hidden_size=config.HIDDEN_SIZE):
         super().__init__()
-        #bert encoder
-        if bert_encoder == None or not isinstance(bert_encoder, BertModel):
-            print("unkown bert model choice, init with config.BERT_EMBEDDING")
-            bert_encoder = BertModel.from_pretrained(config.BERT_EMBEDDING)
-        self.bert_encoder = bert_encoder
+        # embedding
+        
         # dropouts
-        self.dropout = nn.Dropout(p=bert_encoder.config.hidden_dropout_prob)
+        self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
         # linear layers for cross attention, with biased?
-        self.cross_attention_hidden = cross_attention_hidden
+        self.hidden_size = hidden_size
         self.Wq = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
         self.Wk = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
         self.Wv = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, bert_encoder.config.hidden_size))

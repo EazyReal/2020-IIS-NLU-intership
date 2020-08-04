@@ -36,7 +36,7 @@ config.LOG control
 import config
 from preprocess import *
 from model import *
-from utils import *
+import utils
 from train import *
 
 # external
@@ -53,6 +53,8 @@ def init_args(arg_string=None):
     parser = argparse.ArgumentParser()
     
     # ACTION
+    parser.add_argument('--do_process', type=lambda x: (x.lower() == 'true'),
+                        default=False)
     parser.add_argument('--do_train', type=lambda x: (x.lower() == 'true'),
                         default=False)
     #parser.add_argument('--train_file', nargs='*', type=str)
@@ -71,7 +73,8 @@ def init_args(arg_string=None):
     args = parser.parse_args(arg_string)
     
     args.err_stream = sys.stdout
-    args.train_stream = open(config.LOG_FILE_PATH, mode='w')
+    if args.do_train:
+        args.train_stream = open(config.LOG_FILE_PATH, mode='w')
 
     # DEFAULT TO THE MULT-LABEL MODE
     """
@@ -112,27 +115,28 @@ def init_args(arg_string=None):
 def main():
     args = init_args()
     
-    print('CREATING TOKENIZER...', file=args.err_stream)
-    tokenizer = BertTokenizer.from_pretrained(config.BERT_EMBEDDING)
+    #print('CREATING TOKENIZER...', file=args.err_stream)
+    #tokenizer = BertTokenizer.from_pretrained(config.BERT_EMBEDDING)
 
-    print('CREATING MODEL...', file=args.err_stream)
-    model = CrossBERTModel()
+    #print('CREATING MODEL...', file=args.err_stream)
+    #model = CrossBERTModel()
+    
+    if args.do_process:
+        utils.process_data(data_file=config.DEV_MMA_FILE, emb_file=config.GLOVE, target=config.PDEV_MMA_FILE, function_test=False)
+        utils.process_data(data_file=config.DEV_MA_FILE, emb_file=config.GLOVE, target=config.PDEV_MA_FILE, function_test=False)
+        utils.process_data(data_file=config.TRAIN_FILE, emb_file=config.GLOVE, target=config.PTRAIN_FILE, function_test=False)
     
     if args.do_train:
-        # trainer will use gpu if avaiable
-        trainer = CrossBERT_Trainer(model=model)
-        # None = default
-        trainer.train(train_set=None,
-                      dev_set=None,
-                      model_file_path=config.SAVE_MODEL_FOLDER,
-                      log_stream=args.train_stream)
-
+        pass
+    
     if args.do_eval:
         pass
 
     if args.do_predict:
         predict_data = pd.DataFrame()
         pass
+    
+    print("all works done")
 
 if __name__ == "main":
     main()

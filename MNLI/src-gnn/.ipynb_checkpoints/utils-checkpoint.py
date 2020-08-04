@@ -9,12 +9,16 @@ import networkx as nx
 from torch_geometric.utils.convert import to_networkx
 from torch_geometric.data.data import Data
 import matplotlib.pyplot as plt
-from tqdm import tqdm_notebook as tqdm
+from tqdm import tqdm_notebook as tqdmnb
+from tqdm import tqdm as tqdm
 import config
 import utils
 import stanza
 import numpy as np
 import pickle
+import json 
+import jsonlines as jsonl
+from stanza.models.common.doc import Document
 
 ###########################################################################################
 
@@ -32,7 +36,7 @@ l = config.lf
 def draw(data, node_size=1000, font_size=12, save_img_file=None):
     """
     input: (torch_geometric.data.data.Data, path or string)
-    effect: show and save data
+    effect: show and save graph data, with graphviz layout visualization
     """
     G = to_networkx(data)
     pos = nx.nx_pydot.graphviz_layout(G)
@@ -48,13 +52,20 @@ def draw(data, node_size=1000, font_size=12, save_img_file=None):
     if save_img_file != None:
         plt.savefig(save_img_file)
     plt.show()
-
-    
-def text2dep(s, nlp, word2idx=None):
+    return
+ 
+def text2graph(text, nlp, word2idx=None):
     """
-    2020/8/3 18:30
-    input (str:s, StanzaPipieline: nlp), s is of len l
-    output (PytorchGeoData : G)
+    text2doc by Stanza
+    doc2graph by utils.doc2graph 
+    """
+    return doc2graph(nlp(text), word2idx=word2idx)
+    
+def doc2graph(doc, word2idx=None):
+    """
+    2020/8/4 18:30
+    input Stanza Document : doc
+    output PytorchGeoData : G
     G = {
      x: id tensor
      edge_idx : edges size = (2, l-1)
@@ -62,7 +73,6 @@ def text2dep(s, nlp, word2idx=None):
      node_attr: text
     }
     """
-    doc = nlp(s)
     # add root token for each sentences
     e = [[],[]]
     edge_info = []
@@ -105,18 +115,7 @@ def text2dep(s, nlp, word2idx=None):
     G = Data(x=x, edge_index=e, edge_attr=edge_info, node_attr=node_info)
     return G
 
-def print_compact_dep(doc):
-    """
-    input: stanza Doc
-    effect: show dependency edges
-    """
-    print(*[f'id: {word.id}\tword: {word.text}\thead id: {word.head}\thead: {sent.words[word.head-1].text if word.head > 0 else "root"}\tdeprel: {word.deprel}' for sent in doc.sentences for word in sent.words], sep='\n')
-    return
-
-def get_sent_repr(sent, parser, emb):
-    pass
-    
-
+# load glove vector, care return type
 def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOVE_DIMENSION, save_vocab = config.GLOVE_VOCAB, save_word2id = config.GLOVE_WORD2ID, save_dict=True):
     words = []
     idx = 0
@@ -152,11 +151,30 @@ def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOV
         pickle.dump(word2idx, open(config.GLOVE_ROOT / config.GLOVE_WORD2ID, 'wb'))
     return glove, words, word2idx, idx
 
-def preprocess_data(data_file=config.DEV_MA_FILE, emb_file=config.GLOVE, target=config.PDEV_MA_FILE):
+
+# parse one example of MNLI style data
+def process_one_example(data, nlp):
+    ret = {}
+    ret[config.idf] = data[config.idf]
+    ret[config.pf] = nlp(data[config.pf]).to_dict()
+    ret[config.hf] = nlp(data[config.hf]).to_dict()
+    ret[config.lf] = config.label_to_id[data[config.lf]]
+    return ret
+
+# parse the MNLI style data with Stanza and save the result
+def parse_data(data_file=config.DEV_MA_FILE, target=config.PDEV_MA_FILE, function_test=False, force_exe=False):
     """
     input (data = str, embedding = str, target file = str)
     effect preprocess and save data to target
-    return preprocessed data
+    ouput preprocessed data
+    
+    parsed data is in jsonl (each line is a json)
+    {
+        config.idf : id(in string)
+        config.hf : Stanza Doc,
+        config.pf : Stanza Doc,
+        config.lf : int 
+    }
     """
     # alias
     p = config.pf
@@ -172,21 +190,27 @@ def preprocess_data(data_file=config.DEV_MA_FILE, emb_file=config.GLOVE, target=
         raw_lines = fo.readlines()
         json_data = [json.loads(line) for line in raw_lines]
         
-    # glove embedding loading
-    glove = {}
-    with open(emb_file, 'r', encoding="utf-8") as fo:
-        lines = fo.readlines()
-        for line in tqdm(lines):
-            values = line.split()
-            word = values[0]
-            vector = np.asarray(values[1:], "float32")
-            glove[word] = vector
-            
-    # preprocessing
-    for data in json_data:
-        # only add those who have 
-        if(data[l] not in config.label_to_id.keys()):
-            continue
+    if function_test:
+        json_data = json_data[:10]
         
-    
-    return
+    if os.path.isfile(str(target)) and not force_exe:
+        print("file " + str(target) + " already exist")
+        print("if u still want to procceed, add force_exe=True in function arg")
+        print("exiting")
+        return None
+    else:
+        print("creating file " + str(target) + " to save result")
+        print("executing")
+        
+    # dependency parsing and jsonl saving
+    with jsonl.open(target, mode='w') as writer:
+        parsed_data = []
+        for data in tqdm(json_data):
+            # only add those who have gold labels
+            if(data[l] not in config.label_to_id.keys()):
+                continue
+            pdata = process_one_example(data, nlp)
+            parsed_data.append(pdata)
+            writer.write(pdata)
+        
+    return parsed_data
