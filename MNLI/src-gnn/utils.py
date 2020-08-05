@@ -1,24 +1,30 @@
-import torch
+## util
 import os
 import logging
-import config
 from argparse import ArgumentParser
-import stanza
-
-import networkx as nx
-from torch_geometric.utils.convert import to_networkx
-from torch_geometric.data.data import Data
-import matplotlib.pyplot as plt
 from tqdm import tqdm_notebook as tqdmnb
 from tqdm import tqdm as tqdm
-import config
-import utils
-import stanza
-import numpy as np
 import pickle
 import json 
 import jsonlines as jsonl
+from collections import defaultdict
+## graph
+import networkx as nx
+import matplotlib.pyplot as plt
+## nn
+import numpy as np
+import torch
+from torch_geometric.utils.convert import to_networkx
+from torch_geometric.data.data import Data
+from torch_geometric.data import DataLoader
+## model
+import stanza
 from stanza.models.common.doc import Document
+
+## self
+import config
+import utils
+from model import *
 
 ###########################################################################################
 
@@ -73,6 +79,8 @@ def doc2graph(doc, word2idx=None):
      node_attr: text
     }
     """
+    if isinstance(doc, list): #convert to Doc first if is in dict form ([[dict]])
+        doc = Document(doc)
     # add root token for each sentences
     e = [[],[]]
     edge_info = []
@@ -119,7 +127,7 @@ def doc2graph(doc, word2idx=None):
 def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOVE_DIMENSION, save_vocab = config.GLOVE_VOCAB, save_word2id = config.GLOVE_WORD2ID, save_dict=True):
     words = []
     idx = 0
-    word2idx = {}
+    word2idx = defaultdict(int) # return 0 for unkown word
     glove = []
     #glove = bcolz.carray(np.zeros(1), rootdir=f'{glove_path}/6B.50.dat', mode='w')
 

@@ -29,6 +29,7 @@ GLOVE = GLOVE_ROOT / GLOVE_NAME
 GLOVE_VOCAB = GLOVE_ROOT / "glove.42B.300d.vocab.pkl"
 GLOVE_WORD2ID =GLOVE_ROOT / "glove.42B.300d.word2id.pkl"
 GLOVE_DIMENSION = 300
+GLOVE_VOCAB_SIZE = 1917496
 
 # data path
 DEV_MMA_FILE = DATA_ROOT / "multinli_1.0_dev_mismatched.jsonl"
@@ -74,8 +75,17 @@ HIDDEN_SIZE = 300
 BERT_EMBEDDING = "bert-base-uncased" #cased?
 BERT_MAX_INPUT_LEN = 512
 
-# NLI config
-nli_config = {
+# NLI Model config class and instance
+class Model_Config():
+    def __init__(self, *initial_data, **kwargs):
+        for dictionary in initial_data:
+            for key in dictionary:
+                setattr(self, key, dictionary[key])
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
+        return
+
+nli_config_dict = {
     "hidden_size" : 300,
     "embedding" : "glove300d",
     "encoder" : "hggcn",
@@ -84,6 +94,8 @@ nli_config = {
     "prediction" : "2-layer-FNN",
     "activation" : "relu"
 }
+
+nli_config = Model_Config(nli_config_dict)
 
 ######################################
 # Trainning

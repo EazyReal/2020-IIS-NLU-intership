@@ -5,6 +5,7 @@ import math
 #from transformers import BertModel
 
 import config
+from config import nli_config
 import utils
 
 """
@@ -17,12 +18,73 @@ agrregate by mean and max
 prediction
 """
 
+
 # work
+import torch
+from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import GATConv
+from torch_geometric.utils import add_self_loops, degree
+
+
+# conv, GAT
+"""
+GATConv(in_channels: Union[int, Tuple[int, int]], out_channels: int, heads: int = 1, concat: bool = True, negative_slope: float = 0.2, dropout: float = 0.0, add_self_loops: bool = True, bias: bool = True, **kwargs)
+"""
+
+# conv, do later
+class GCNConv(MessagePassing):
+    def __init__(self, in_channels, out_channels):
+        super(GCNConv, self).__init__(aggr='add')
+        self.lin = torch.nn.Linear(in_channels, out_channels)
+
+    def forward(self, x, edge_index):
+        # x has shape [N, in_channels]
+        # edge_index has shape [2, E]
+
+        # Step 1: Add self-loops to the adjacency matrix.
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+
+        # Step 2: Linearly transform node feature matrix.
+        x = self.lin(x)
+
+        # Step 3: Compute normalization.
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+
+        # Step 4-5: Start propagating messages.
+        return self.propagate(edge_index, x=x, norm=norm)
+
+    def message(self, x_j, norm):
+        # x_j has shape [E, out_channels]
+
+        # Step 4: Normalize node features.
+        return norm.view(-1, 1) * x_j
+
+# apply l layers of GraphConv
 class GraphEncoder(nn.Module):
-    def __init__(self, input_d=config.EMBEDDING_D, output_dconfig.EMBEDDING_D, number_of_head=1):
+    def __init__(self, input_d=config.EMBEDDING_D, output_d = config.EMBEDDING_D, conv="gat", num_layers=2):
         super().__init__()
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
+        self.num_layers = num_layers
+        if conv == "hggcn":
+            self.conv = None
+        elif conv == "gat":
+            # negative_slope is slope of LeakyRelu
+            self.conv = GATConv(in_channels = input_d,
+                                out_channels = input_d,
+                                heads = 2, concat = True,
+                                negative_slope = 0.2,
+                                dropout = 0.0,
+                                add_self_loops= True,
+                                bias = True)
+    def forward(batch):
+        for l in range(self.num_layers):
+            batch, att = self.conv(batch, return_attention_weights=None)
+        return batch
+        
         
 class CrossAttentionLayer(nn.Module):
     """
@@ -31,16 +93,16 @@ class CrossAttentionLayer(nn.Module):
     input: query vector(b*n*d), content vector(b*m*d)
     ouput: sof aligned content vector to query vector(b*n*d)
     """
-    def __init__(self, input_d=config.EMBEDDING_D, output_dconfig.EMBEDDING_D, number_of_head=1):
+    def __init__(self, input_d, output_d, hidden_d, number_of_head=1):
         super().__init__()
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
         # params
         self.hidden_size = hidden_size
-        self.Wq = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
-        self.Wk = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
-        self.Wv = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, bert_encoder.config.hidden_size))
-        self.Wo = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, bert_encoder.config.hidden_size))
+        self.Wq = nn.Parameter(torch.Tensor(input_d, hidden_d))
+        self.Wk = nn.Parameter(torch.Tensor(input_d, hidden_d))
+        self.Wv = nn.Parameter(torch.Tensor(input_d, output_d))
+        self.Wo = nn.Parameter(torch.Tensor(input_d, output_d))
         nn.init.xavier_uniform_(self.Wk, gain=nn.init.calculate_gain('linear'))
         nn.init.xavier_uniform_(self.Wq, gain=nn.init.calculate_gain('linear'))
         nn.init.xavier_uniform_(self.Wv, gain=nn.init.calculate_gain('linear'))
@@ -74,36 +136,30 @@ class SynNLI_Model(nn.Module):
     def __init__(self, nli_config=config.nli_config, pretrained_embedding_tensor=None):
         super().__init__()
         self.settings = nli_config
+        d = self.settings.hidden_size
         # dropouts
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
         # embedding
-        if(self.settings["embedding"] == "glove300d"):
+        if(self.settings.embedding == "glove300d"):
             #pretrained_embedding_tensor = utils.load_glove_vector() should not be here
             self.embedding = nn.Embedding.from_pretrained(pretrained_embedding_tensor)
         else:
-            self.embedding = nn.Embedding(2000000, 300)
+            self.embedding = nn.Embedding(config.GLOVE_VOCAB_SIZE, config.GLOVE_DIMENSION)
         # encoder
-        if(self.settings["encoder"] == "hggcn"):
-            self.encoder = GraphEncoder(conv="hggcn")
+        if self.settings.encoder == None:
+            self.encoder = None
+        else:
+            self.encoder = GraphEncoder(conv=self.settings.encoder)
         # cross_att
-        if(self.settings["cross_att"] == "scaled_dot"):
+        if(self.settings.cross_att == "scaled_dot"):
             self.cross_att = CrossAttentionLayer()
-        # local comp
-        
-        # aggregation
-        
-        ## cls
-        self.classifier = nn.Linear(2*bert_encoder.config.hidden_size, config.NUM_CLASSES)
-        
-        forward_expansion = 1 # can change
-        #compare stage fnn 2*d=>d
-        self.fnn = nn.Sequential(
-            nn.Linear(4*bert_encoder.config.hidden_size, forward_expansion*bert_encoder.config.hidden_size),
-            nn.ReLU(),
-            nn.Linear(forward_expansion*bert_encoder.config.hidden_size, bert_encoder.config.hidden_size),
-        )
-        # critrion
+        # local comp fnn h, p^, h-p^, h*p^
+        self.local_comp = nn.Sequential(nn.Linear(4*d, d), nn.ReLU(), nn.Linear(d,d))
+        # aggregation is max
+        # self.aggr = (partial)torch.max(dim=1, keep_dim=False)
+        # cls
+        self.classifier = nn.Linear(d, config.NUM_CLASSES)
         self.criterion = nn.BCEWithLogitsLoss()
     
     
@@ -113,13 +169,15 @@ class SynNLI_Model(nn.Module):
         'sentence2' :  {'input_ids', 'token_type_ids', 'attention_mask'}
         'gold_label' : batch*1
         """
-        # get bert contextualized embedding
-        hh, poolh = self.bert_encoder(input_ids=batch[config.h_field]['input_ids'],
-                                         token_type_ids=batch[config.h_field]['token_type_ids'],
-                                         attention_mask=batch[config.h_field]['attention_mask'])
-        hp, poolp = self.bert_encoder(input_ids=batch[config.p_field]['input_ids'],
-                                         token_type_ids=batch[config.p_field]['token_type_ids'],
-                                         attention_mask=batch[config.p_field]['attention_mask'])
+        # alias
+        lf = config.lf
+        hf = config.hf
+        pf = config.pf
+        # get embedding
+        batch[lf] = 
+        # get graph contextualized embedding
+        hh, poolh = self.encoder()
+        hp, poolp = self.encoder()
         # soft alignment, not considering mask...
         mh = attention_mask=batch[config.h_field]['attention_mask']
         mp = attention_mask=batch[config.p_field]['attention_mask']

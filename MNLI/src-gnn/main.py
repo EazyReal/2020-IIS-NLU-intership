@@ -121,12 +121,14 @@ def main():
     #print('CREATING MODEL...', file=args.err_stream)
     #model = CrossBERTModel()
     
+    # Stanza parsing and saving
     if args.do_process:
-        utils.process_data(data_file=config.DEV_MMA_FILE, emb_file=config.GLOVE, target=config.PDEV_MMA_FILE, function_test=False)
-        utils.process_data(data_file=config.DEV_MA_FILE, emb_file=config.GLOVE, target=config.PDEV_MA_FILE, function_test=False)
-        utils.process_data(data_file=config.TRAIN_FILE, emb_file=config.GLOVE, target=config.PTRAIN_FILE, function_test=False)
-    
+        utils.parse_data(data_file=config.DEV_MMA_FILE, emb_file=config.GLOVE, target=config.PDEV_MMA_FILE, function_test=False)
+        utils.parse_data(data_file=config.DEV_MA_FILE, emb_file=config.GLOVE, target=config.PDEV_MA_FILE, function_test=False)
+        utils.parse_data(data_file=config.TRAIN_FILE, emb_file=config.GLOVE, target=config.PTRAIN_FILE, function_test=False)
+
     if args.do_train:
+        jdata = data.load_data()
         pass
     
     if args.do_eval:
