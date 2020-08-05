@@ -59,7 +59,10 @@ def draw(data, node_size=1000, font_size=12, save_img_file=None):
         plt.savefig(save_img_file)
     plt.show()
     return
- 
+
+def token2sent(ids, word):
+    return ' '.join([ word[idx] for idx in ids])
+
 def text2graph(text, nlp, word2idx=None):
     """
     text2doc by Stanza
@@ -116,9 +119,10 @@ def doc2graph(doc, word2idx=None):
     # x = torch.tensor([ for token in node_attr])
     # done building edges and nodes
     if word2idx == None:
+        # print("x is not id now, node info is in node_attr as text")
         x = torch.tensor(list(range(doc.num_tokens+len(doc.sentences))))
     else:
-        x = torch.tensor([ word2idx[token] if token in word2idx.keys() else word2idx["[UNK]"] for token in node_info])
+        x = torch.tensor([ word2idx[token] for token in node_info])
     e = torch.tensor(e)
     G = Data(x=x, edge_index=e, edge_attr=edge_info, node_attr=node_info)
     return G

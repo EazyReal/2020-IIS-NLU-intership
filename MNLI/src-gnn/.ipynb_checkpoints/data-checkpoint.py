@@ -19,17 +19,32 @@ def load_jdata(data_file, function_test=False):
 # bulid GraohData
 class GraphData(Data):
     """
-    item is a raw json of parsed result
+    dependences: utils.doc2graph 
+    input data:json, word2idx: dict(word->token_id), to_lower?
+    data is a raw json object of parsed result
+    {
+    config.hf: parsed hypothesis
+    config.pf: parsed premise
+    config.lf: label as int
+    config.idf: problem id, string
+    }
+    output a GraphData type object
     """
     def __init__(self, data, word2idx, tolower=True):
         super(GraphData, self).__init__()
         g_p = utils.doc2graph(Document(data[config.pf]))
         g_h = utils.doc2graph(Document(data[config.hf]))
         self.edge_index_p = g_p.edge_index
-        #print(g_p.node_attr)
-        self.x_p = torch.tensor([ word2idx[w.lower()] for w in g_p.node_attr], dtype=torch.long)
         self.edge_index_h = g_h.edge_index
-        self.x_h = torch.tensor([ word2idx[w.lower()] for w in g_h.node_attr], dtype=torch.long)
+        #print(g_p.node_attr)
+        # care [ROOT] [UNK] should not get lower!!!
+        if tolower == True:
+            self.x_p = torch.tensor([ word2idx[w.lower() if w[0] != "[" or w[-1] != "]" else w] for w in g_p.node_attr], dtype=torch.long)
+            self.x_h = torch.tensor([ word2idx[w.lower() if w[0] != "[" or w[-1] != "]" else w] for w in g_h.node_attr], dtype=torch.long)
+        else:
+            print("not to lower")
+            self.x_p = torch.tensor([ word2idx[w] for w in g_p.node_attr], dtype=torch.long)
+            self.x_h = torch.tensor([ word2idx[w] for w in g_h.node_attr], dtype=torch.long)
         self.label = data[config.lf]
         self.pid = data[config.idf]
     def __inc__(self, key, value):

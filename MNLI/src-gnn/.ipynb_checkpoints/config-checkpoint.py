@@ -27,7 +27,8 @@ GLOVE_ROOT = PROJ_ROOT / "data" / "glove_embedding"
 GLOVE_NAME = "glove.42B.300d.txt"
 GLOVE = GLOVE_ROOT / GLOVE_NAME
 GLOVE_VOCAB = GLOVE_ROOT / "glove.42B.300d.vocab.pkl"
-GLOVE_WORD2ID =GLOVE_ROOT / "glove.42B.300d.word2id.pkl"
+GLOVE_WORD2ID = GLOVE_ROOT / "glove.42B.300d.word2id.pkl"
+GLOVE_SAVED_TENSOR = GLOVE_ROOT / "glove.42B.300d.tensor.pkl"
 GLOVE_DIMENSION = 300
 GLOVE_VOCAB_SIZE = 1917496
 
@@ -88,7 +89,7 @@ class Model_Config():
 nli_config_dict = {
     "hidden_size" : 300,
     "embedding" : "glove300d",
-    "encoder" : "hggcn",
+    "encoder" : "gat",
     "cross_att" : "scaled_dot",
     "aggregation" : "max",
     "prediction" : "2-layer-FNN",

@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import math
+import logging
 #from transformers import BertModel
 
 import config
@@ -74,16 +75,18 @@ class GraphEncoder(nn.Module):
         elif conv == "gat":
             # negative_slope is slope of LeakyRelu
             self.conv = GATConv(in_channels = input_d,
-                                out_channels = input_d,
+                                out_channels = input_d//2,
                                 heads = 2, concat = True,
                                 negative_slope = 0.2,
                                 dropout = 0.0,
                                 add_self_loops= True,
                                 bias = True)
-    def forward(batch):
+    def forward(self, x, edge_index):
+        # print(self.conv)
         for l in range(self.num_layers):
-            batch, att = self.conv(batch, return_attention_weights=None)
-        return batch
+            x, (edge, att) = self.conv(x, edge_index, return_attention_weights=True)
+            # print(x.size(), att.size())
+        return x
         
         
 class CrossAttentionLayer(nn.Module):
@@ -93,12 +96,15 @@ class CrossAttentionLayer(nn.Module):
     input: query vector(b*n*d), content vector(b*m*d)
     ouput: sof aligned content vector to query vector(b*n*d)
     """
-    def __init__(self, input_d, output_d, hidden_d, number_of_head=1):
+    def __init__(self, input_d, output_d, hidden_d, number_of_heads=1):
         super().__init__()
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
+        self.input_d = input_d
+        self.output_d = output_d
+        self.hidden_d = hidden_d
+        self.number_of_heads = number_of_heads
         # params
-        self.hidden_size = hidden_size
         self.Wq = nn.Parameter(torch.Tensor(input_d, hidden_d))
         self.Wk = nn.Parameter(torch.Tensor(input_d, hidden_d))
         self.Wv = nn.Parameter(torch.Tensor(input_d, output_d))
@@ -135,25 +141,25 @@ class SynNLI_Model(nn.Module):
     """
     def __init__(self, nli_config=config.nli_config, pretrained_embedding_tensor=None):
         super().__init__()
-        self.settings = nli_config
-        d = self.settings.hidden_size
+        self.config = nli_config
+        d = self.config.hidden_size
         # dropouts
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
         # embedding
-        if(self.settings.embedding == "glove300d"):
+        if(self.config.embedding == "glove300d"):
             #pretrained_embedding_tensor = utils.load_glove_vector() should not be here
             self.embedding = nn.Embedding.from_pretrained(pretrained_embedding_tensor)
         else:
             self.embedding = nn.Embedding(config.GLOVE_VOCAB_SIZE, config.GLOVE_DIMENSION)
         # encoder
-        if self.settings.encoder == None:
+        if self.config.encoder == None:
             self.encoder = None
         else:
-            self.encoder = GraphEncoder(conv=self.settings.encoder)
+            self.encoder = GraphEncoder(conv=self.config.encoder)
         # cross_att
-        if(self.settings.cross_att == "scaled_dot"):
-            self.cross_att = CrossAttentionLayer()
+        if(self.config.cross_att == "scaled_dot"):
+            self.cross_att = CrossAttentionLayer(input_d=d, output_d=d, hidden_d=d, number_of_heads=1)
         # local comp fnn h, p^, h-p^, h*p^
         self.local_comp = nn.Sequential(nn.Linear(4*d, d), nn.ReLU(), nn.Linear(d,d))
         # aggregation is max
@@ -165,27 +171,34 @@ class SynNLI_Model(nn.Module):
     
     def forward_nn(self, batch):
         """
-        'sentence1' : {'input_ids', 'token_type_ids', 'attention_mask'} batch*len*d
-        'sentence2' :  {'input_ids', 'token_type_ids', 'attention_mask'}
-        'gold_label' : batch*1
+        G(graph by edge list): batch.edge_index_p, batch.edge_index_h
+        X(input token id): batch.x_p, batch.x_h
+        B(batch info): batch.x_p_batch, batch.x_h_batch
+        L(label): batch.label
+        ID(index of problem): batch.pid
         """
-        # alias
-        lf = config.lf
-        hf = config.hf
-        pf = config.pf
-        # get embedding
-        batch[lf] = 
+        # id to embedding
+        w_p = self.embedding(batch.x_p)
+        w_h = self.embedding(batch.x_h)
+        logging.debug(w_p.size())
         # get graph contextualized embedding
-        hh, poolh = self.encoder()
-        hp, poolp = self.encoder()
+        p = self.encoder(w_p, batch.edge_index_p)
+        h = self.encoder(w_h, batch.edge_index_h)
+        logging.debug(p.size())
+        print(p.size())
+        
+        # rebuild batched by follow_batch
+        batch_size = batch.x_p_batch[-1] + 1
+        len_bp = torch.unique_consecutive(batch.x_p_batch, return_counts=True)
+        len_bh = torch.unique_consecutive(batch.x_h_batch, return_counts=True)
+        print(len_bp, len_bh, sep='\n')
+        p = None
+        h = None
+        maskp = None
+        maskh = None
         # soft alignment, not considering mask...
-        mh = attention_mask=batch[config.h_field]['attention_mask']
-        mp = attention_mask=batch[config.p_field]['attention_mask']
-        maskph = torch.einsum("bn,bm->bnm", [mh, mp])
-        maskhp = torch.einsum("bn,bm->bnm", [mp, mh])
-        # (b, l_h, d)
-        p_hat = self.cross_attention(hh, hp, maskph) # b * l_h * d
-        # aligned_h_for_p = self.cross_attention(hp, hh, maskhp) # b * l_p *d
+        maskhp = maskp@maskh
+        p_hat = self.cross_att(h, p, maskhp) 
         
         # comparison stage
         # (b, l_h, d)
