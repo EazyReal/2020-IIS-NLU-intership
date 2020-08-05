@@ -67,18 +67,42 @@ idf = "pairID"
 ######################################
 CROSS_ATTENTION_HIDDEN_SIZE = 392
 NUM_CLASSES = 3
+EMBEDDING_D = 300
 HIDDEN_SIZE = 300
 
 # Bert Enbedding
 BERT_EMBEDDING = "bert-base-uncased" #cased?
 BERT_MAX_INPUT_LEN = 512
 
+# NLI config
+nli_config = {
+    "hidden_size" : 300,
+    "embedding" : "glove300d",
+    "encoder" : "hggcn",
+    "cross_att" : "scaled_dot",
+    "aggregation" : "max",
+    "prediction" : "2-layer-FNN",
+    "activation" : "relu"
+}
+
 ######################################
 # Trainning
 ######################################
-BATCH_SIZE = 8
-NUM_EPOCHS = 6
-LR = 3*0.00001 # 1e-5
+"""
+reference for bert fine-tuning
+BATCH_SIZE = # 32 / 16 / 8
+NUM_EPOCHS = # 2 / 3 / 4
+LR = # 5/3/2 1e-5
+WEIGHT_DECAY = 0.01
+
+reference for KAGNet
+BATCH_SIZE = 64
+NUM_EPOCHS = 10
+LR = 1e-3
+"""
+BATCH_SIZE = 32 # 32 / 16 / 8
+NUM_EPOCHS = 5 # 2 / 3 / 4
+LR = 5*1e-4 # 5/3/2 1e-5 for finetuning, 1e-3/4 for training?
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
 NUM_WARMUP = 100

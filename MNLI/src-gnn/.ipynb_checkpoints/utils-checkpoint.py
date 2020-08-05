@@ -146,6 +146,7 @@ def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOV
             idx += 1
     #glove = bcolz.carray(vectors[1:].reshape((400000, 50)), rootdir=f'{glove_path}/6B.50.dat', mode='w')
     #glove.flush()
+    glove = torch.tensor(glove, dtype=torch.float32) 
     if save_dict == True:
         pickle.dump(words, open(config.GLOVE_ROOT / config.GLOVE_VOCAB, 'wb'))
         pickle.dump(word2idx, open(config.GLOVE_ROOT / config.GLOVE_WORD2ID, 'wb'))

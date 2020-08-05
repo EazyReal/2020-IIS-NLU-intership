@@ -7,23 +7,35 @@ import math
 import config
 import utils
 
+"""
+implement baseline first
+glove
+GAT
+cross att
+local comparison(F(h;p;h-p;h*p))
+agrregate by mean and max
+prediction
+"""
+
 # work
-class SynNLI_Model(nn.Module):
-    """
-    word embedding (glove/bilstm/elmo/bert)
-    graph encoder (GAT/HGAT/HetGT...)
-    cross attention allignment (DecompAtt)
-    aggregation (LSTM?)
-    prediction (FeedForward)
-    """
-    def __init__(self, hidden_size=config.HIDDEN_SIZE):
+class GraphEncoder(nn.Module):
+    def __init__(self, input_d=config.EMBEDDING_D, output_dconfig.EMBEDDING_D, number_of_head=1):
         super().__init__()
-        # embedding
-        
-        # dropouts
         self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
         self.activation = nn.ReLU(inplace=True)
-        # linear layers for cross attention, with biased?
+        
+class CrossAttentionLayer(nn.Module):
+    """
+    cross attention, similar to Decomp-Att
+    but no fowrad nn, use Wk Wq Wv
+    input: query vector(b*n*d), content vector(b*m*d)
+    ouput: sof aligned content vector to query vector(b*n*d)
+    """
+    def __init__(self, input_d=config.EMBEDDING_D, output_dconfig.EMBEDDING_D, number_of_head=1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
+        self.activation = nn.ReLU(inplace=True)
+        # params
         self.hidden_size = hidden_size
         self.Wq = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
         self.Wk = nn.Parameter(torch.Tensor(bert_encoder.config.hidden_size, self.cross_attention_hidden))
@@ -33,6 +45,53 @@ class SynNLI_Model(nn.Module):
         nn.init.xavier_uniform_(self.Wq, gain=nn.init.calculate_gain('linear'))
         nn.init.xavier_uniform_(self.Wv, gain=nn.init.calculate_gain('linear'))
         nn.init.xavier_uniform_(self.Wo, gain=nn.init.calculate_gain('relu'))
+        
+    def forward(self, h1, h2, mask=None):
+        Q = torch.matmul(h1, self.Wq)
+        #K = torch.matmul(h2, self.Wk)
+        #Kt = torch.matmul(h2, self.Wk).permute(0,2,1)
+        #E = torch.matmul(Q, Kt)
+        K = torch.einsum("bnx,xy->bny", [h2, self.Wk])
+        V = torch.matmul(h2, self.Wv)
+        E = torch.einsum("bnd,bmd->bnm", [Q, K]) # batch, n/m, dimension
+        if mask is not None:
+            E = E.masked_fill(mask==0, float(-1e7))
+        A = torch.softmax(E / (math.sqrt(self.cross_attention_hidden)), dim=2) #soft max dim = 2
+        # attention shape: (N, heads, query_len, key_len)
+        aligned_2_for_1 = torch.einsum("bnm,bmd->bnd", [A, V])
+            
+        return aligned_2_for_1
+        
+class SynNLI_Model(nn.Module):
+    """
+    word embedding (glove/bilstm/elmo/bert) + SRL embedding
+    graph encoder (GAT/HGAT/HetGT...)
+    cross attention allignment (CrossAtt)
+    local comparison(F(h;p;h-p;h*p))
+    aggregation ((tree-)LSTM?)
+    prediction (FeedForward)
+    """
+    def __init__(self, nli_config=config.nli_config, pretrained_embedding_tensor=None):
+        super().__init__()
+        self.settings = nli_config
+        # dropouts
+        self.dropout = nn.Dropout(p=config.DROUP_OUT_PROB)
+        self.activation = nn.ReLU(inplace=True)
+        # embedding
+        if(self.settings["embedding"] == "glove300d"):
+            #pretrained_embedding_tensor = utils.load_glove_vector() should not be here
+            self.embedding = nn.Embedding.from_pretrained(pretrained_embedding_tensor)
+        else:
+            self.embedding = nn.Embedding(2000000, 300)
+        # encoder
+        if(self.settings["encoder"] == "hggcn"):
+            self.encoder = GraphEncoder(conv="hggcn")
+        # cross_att
+        if(self.settings["cross_att"] == "scaled_dot"):
+            self.cross_att = CrossAttentionLayer()
+        # local comp
+        
+        # aggregation
         
         ## cls
         self.classifier = nn.Linear(2*bert_encoder.config.hidden_size, config.NUM_CLASSES)
@@ -47,27 +106,6 @@ class SynNLI_Model(nn.Module):
         # critrion
         self.criterion = nn.BCEWithLogitsLoss()
     
-    """
-    cross attention, similar to Decomp-Att
-    but no fowrad nn, use Wk Wq Wv
-    input: query vector(b*n*d), content vector(b*m*d)
-    ouput: sof aligned content vector to query vector(b*n*d)
-    """
-    def cross_attention(self, h1, h2, mask=None):
-        Q = torch.matmul(h1, self.Wq)
-        #K = torch.matmul(h2, self.Wk)
-        K = torch.einsum("bnx,xy->bny", [h2, self.Wk])
-        V = torch.matmul(h2, self.Wv)
-        #Kt = torch.matmul(h2, self.Wk).permute(0,2,1)
-        #E = torch.matmul(Q, Kt)
-        E = torch.einsum("bnd,bmd->bnm", [Q, K]) # batch, n/m, dimension
-        if mask is not None:
-            E = E.masked_fill(mask==0, float(-1e7))
-        A = torch.softmax(E / (math.sqrt(self.cross_attention_hidden)), dim=2) #soft max dim = 2
-        # attention shape: (N, heads, query_len, key_len)
-        aligned_2_for_1 = torch.einsum("bnm,bmd->bnd", [A, V])
-            
-        return aligned_2_for_1
     
     def forward_nn(self, batch):
         """
