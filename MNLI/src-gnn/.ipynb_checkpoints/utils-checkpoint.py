@@ -162,6 +162,7 @@ def load_glove_vector(glove_embedding_file = config.GLOVE, dimension=config.GLOV
     if save_dict == True:
         pickle.dump(words, open(config.GLOVE_ROOT / config.GLOVE_VOCAB, 'wb'))
         pickle.dump(word2idx, open(config.GLOVE_ROOT / config.GLOVE_WORD2ID, 'wb'))
+        pickle.dump(glove, open(config.GLOVE_ROOT / config.GLOVE_SAVED_TENSOR, 'wb'))
     return glove, words, word2idx, idx
 
 

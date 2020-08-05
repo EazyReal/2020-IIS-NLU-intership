@@ -122,9 +122,10 @@ class CrossAttentionLayer(nn.Module):
         K = torch.einsum("bnx,xy->bny", [h2, self.Wk])
         V = torch.matmul(h2, self.Wv)
         E = torch.einsum("bnd,bmd->bnm", [Q, K]) # batch, n/m, dimension
+        #print(E.size())
         if mask is not None:
-            E = E.masked_fill(mask==0, float(-1e7))
-        A = torch.softmax(E / (math.sqrt(self.cross_attention_hidden)), dim=2) #soft max dim = 2
+            E = E.masked_fill(mask==0, float(-1e10))
+        A = torch.softmax(E / (math.sqrt(self.hidden_d)), dim=2) #soft max dim = 2
         # attention shape: (N, heads, query_len, key_len)
         aligned_2_for_1 = torch.einsum("bnm,bmd->bnd", [A, V])
             
@@ -161,13 +162,41 @@ class SynNLI_Model(nn.Module):
         if(self.config.cross_att == "scaled_dot"):
             self.cross_att = CrossAttentionLayer(input_d=d, output_d=d, hidden_d=d, number_of_heads=1)
         # local comp fnn h, p^, h-p^, h*p^
-        self.local_comp = nn.Sequential(nn.Linear(4*d, d), nn.ReLU(), nn.Linear(d,d))
+        self.local_cmp = nn.Sequential(nn.Linear(4*d, d), nn.ReLU(), nn.Linear(d,d))
         # aggregation is max
         # self.aggr = (partial)torch.max(dim=1, keep_dim=False)
         # cls
-        self.classifier = nn.Linear(d, config.NUM_CLASSES)
+        self.classifier = nn.Sequential(nn.Linear(2*d, d), nn.ReLU(), nn.Linear(d,config.NUM_CLASSES))
         self.criterion = nn.BCEWithLogitsLoss()
     
+    def get_batch_tensor(self, p, x_p_batch):
+        """
+        input: p : (n*d), x_p_batch : (n*1)
+        ouput: batch dense version and corresponding mask : (batch*max_l*d)
+        example in 
+            [e1, e2, e3..., e5]
+            [0, 0, 1, 2, 2]
+        example out
+            [[e1,e2], [e3, <pad>], [e4, e5]]
+            [[1,1], [1, 0], [1, 1]]
+        """
+        d = self.config.hidden_size
+        batch_size = x_p_batch[-1].item() + 1
+        len_bp = torch.unique_consecutive(x_p_batch, return_counts=True)
+        max_len_p = torch.max(len_bp[1]).item()
+        #print(len_bp, max_len_p, sep='\n')
+        bp = torch.zeros([batch_size, max_len_p, d])
+        maskp = torch.zeros([batch_size, max_len_p], dtype=torch.long)
+        ti = 0
+        for bi in range(batch_size):
+            for li in range(max_len_p):
+                if li < len_bp[1][bi]:
+                    bp[bi][li] = p[ti]
+                    maskp[bi][li] = 1
+                    ti += 1
+                else:
+                    continue
+        return bp, maskp
     
     def forward_nn(self, batch):
         """
@@ -177,6 +206,8 @@ class SynNLI_Model(nn.Module):
         L(label): batch.label
         ID(index of problem): batch.pid
         """
+        # alias 
+        d = self.config.hidden_size
         # id to embedding
         w_p = self.embedding(batch.x_p)
         w_h = self.embedding(batch.x_h)
@@ -185,24 +216,21 @@ class SynNLI_Model(nn.Module):
         p = self.encoder(w_p, batch.edge_index_p)
         h = self.encoder(w_h, batch.edge_index_h)
         logging.debug(p.size())
-        print(p.size())
         
-        # rebuild batched by follow_batch
-        batch_size = batch.x_p_batch[-1] + 1
-        len_bp = torch.unique_consecutive(batch.x_p_batch, return_counts=True)
-        len_bh = torch.unique_consecutive(batch.x_h_batch, return_counts=True)
-        print(len_bp, len_bh, sep='\n')
-        p = None
-        h = None
-        maskp = None
-        maskh = None
+        # rebuild batched by follow_batch , p->bp
+        p, maskp = self.get_batch_tensor(p, batch.x_p_batch)
+        #print(maskp)
+        h, maskh = self.get_batch_tensor(h, batch.x_h_batch)
+        logging.debug(p.size(), maskp.size(), sep='\n')
+            
         # soft alignment, not considering mask...
-        maskhp = maskp@maskh
+        maskhp = torch.einsum("bn, bm->bmn", maskp, maskh) #maskp = b*n, maskh = b*m, maskhp = b*m*n
+        logging.debug(maskhp[1])
         p_hat = self.cross_att(h, p, maskhp) 
         
         # comparison stage
         # (b, l_h, d)
-        cmp_hp = self.fnn(torch.cat((p_hat, hh, p_hat-hh, p_hat*hh), dim=2))
+        cmp_hp = self.local_cmp(torch.cat((p_hat, h, p_hat-h, p_hat*h), dim=2))
         #cmp_ph = self.fnn(torch.cat((aligned_h_for_p, hp), dim=2))
         
         # aggregatoin stage (mean + max for h part IMO)
@@ -220,8 +248,11 @@ class SynNLI_Model(nn.Module):
     # the nn.Module method
     def forward(self, batch):
         logits = self.forward_nn(batch)
-        batch[config.label_field] = batch[config.label_field].to(dtype=torch.float)
-        loss = self.criterion(logits, batch[config.label_field])
+        #label_onehot = torch.zeros([config.BATCH_SIZE, config.NUM_CLASSES]).scatter_(dim=1, index=torch.LongTensor(batch.label), value = 1)
+        label_onehot = torch.zeros([batch.label.size()[0], config.NUM_CLASSES]).scatter_(1, batch.label.view(-1,1).to(dtype=torch.long), 1)
+        label_onehot = label_onehot.to(dtype=torch.float)
+        #print(label_onehot.size(), logits.size())
+        loss = self.criterion(logits, label_onehot)
         return loss, logits
     
     # return sigmoded score
