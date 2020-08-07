@@ -1,5 +1,8 @@
 # 2020 Research Internship @ NLU lab, Institute of Information Science, Academia Sinica
 
+## Alert 
+- this repo is archived, pls visit 2020-IIS-internship for updates
+
 ## Overview
 
 - FGC_baseline_BERT
